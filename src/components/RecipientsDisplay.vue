@@ -15,29 +15,21 @@ const showTooltip = ref(false)
 
 // Estado para controle de recipients visíveis
 const visibleRecipients = ref<string[]>([])
-
-// Computed para recipients realmente escondidos (não visíveis)
-const hiddenRecipients = computed(() => {
-  const [_, ...rest] = props.recipients
-  return rest.slice(visibleRecipients.value.length - (visibleRecipients.value[0] ? 1 : 0))
+const hiddenCount = computed(() => {
+  if (visibleRecipients.value.length === 0) return props.recipients.length - 1
+  return props.recipients.length - visibleRecipients.value.length
 })
 
-const hiddenCount = computed(() => hiddenRecipients.value.length)
-
 // Verifica se texto cabe no container
-// Função para reutilizar span para medir largura do texto
-let span: HTMLSpanElement | null = null
+const span = document.createElement('span')
+span.style.visibility = 'hidden'
+span.style.position = 'absolute'
+span.style.whiteSpace = 'nowrap'
+document.body.appendChild(span)
+
 const textFits = (text: string, containerWidth: number): boolean => {
-  if (!span) {
-    span = document.createElement('span')
-    span.style.visibility = 'hidden'
-    span.style.position = 'absolute'
-    span.style.whiteSpace = 'nowrap'
-    document.body.appendChild(span)
-  }
   span.textContent = text
-  const fits = span.offsetWidth <= containerWidth
-  return fits
+  return span.offsetWidth <= containerWidth
 }
 
 // Atualiza recipients visíveis baseado no espaço disponível
@@ -93,7 +85,6 @@ onUnmounted(() => {
   <div 
     ref="containerRef" 
     class="recipients-container"
-    style="display: flex; align-items: center; gap: 8px;"
   >
     <span ref="recipientsRef" class="recipients-text">
       <!-- Caso especial para primeiro recipient quando não há espaço -->
@@ -103,8 +94,7 @@ onUnmounted(() => {
       
       <!-- Recipients visíveis -->
       <template v-else>
-        {{ visibleRecipients.join(', ') }}
-        <template v-if="visibleRecipients.length < recipients.length">, ...</template>
+        {{ visibleRecipients.join(', ') }}<template v-if="visibleRecipients.length < recipients.length">, ...</template>
       </template>
     </span>
 
@@ -118,16 +108,19 @@ onUnmounted(() => {
 
     <!-- Tooltip -->
     <div 
-      v-if="showTooltip && hiddenRecipients.length > 0"
-      class="recipients-tooltip"      
+      v-if="showTooltip"
+      class="recipients-tooltip"
     >
-      {{ hiddenRecipients.join(', ') }}
+      {{ recipients.join(', ') }}
     </div>
   </div>
 </template>
 
 <style scoped>
 .recipients-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   position: relative;
   white-space: nowrap;
   overflow: hidden;
