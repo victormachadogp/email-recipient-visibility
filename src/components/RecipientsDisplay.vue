@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, Teleport } from 'vue'
 import RecipientsBadge from './RecipientsBadge.vue'
 
 interface RecipientsDisplayProps {
@@ -8,19 +8,19 @@ interface RecipientsDisplayProps {
 
 const props = defineProps<RecipientsDisplayProps>()
 
-// Refs para elementos DOM
+// DOM element refs
 const containerRef = ref<HTMLDivElement | null>(null)
 const recipientsRef = ref<HTMLSpanElement | null>(null)
 const showTooltip = ref(false)
 
-// Estado para controle de recipients visíveis
+// State for visible recipients control
 const visibleRecipients = ref<string[]>([])
 const hiddenCount = computed(() => {
   if (visibleRecipients.value.length === 0) return props.recipients.length - 1
   return props.recipients.length - visibleRecipients.value.length
 })
 
-// Verifica se texto cabe no container
+// Hidden span to check if text fits in container
 const span = document.createElement('span')
 span.style.visibility = 'hidden'
 span.style.position = 'absolute'
@@ -32,7 +32,7 @@ const textFits = (text: string, containerWidth: number): boolean => {
   return span.offsetWidth <= containerWidth
 }
 
-// Atualiza recipients visíveis baseado no espaço disponível
+// Update visible recipients based on available space
 const updateVisibleRecipients = async () => {
   await nextTick()
   
@@ -41,13 +41,13 @@ const updateVisibleRecipients = async () => {
   const containerWidth = containerRef.value.offsetWidth
   const [firstRecipient, ...otherRecipients] = props.recipients
   
-  // Caso especial para primeiro recipient
+  // Special case for single recipient
   if (props.recipients.length === 1) {
     visibleRecipients.value = [firstRecipient]
     return
   }
   
-  // Se nem o primeiro recipient cabe completamente
+  // If even first recipient doesn't fit completely
   if (!textFits(firstRecipient, containerWidth - 50)) {
     visibleRecipients.value = []
     return
@@ -56,7 +56,7 @@ const updateVisibleRecipients = async () => {
   const visible = [firstRecipient]
   let currentText = firstRecipient
   
-  // Tenta adicionar outros recipients
+  // Try to add other recipients
   for (const recipient of otherRecipients) {
     const testText = `${currentText}, ${recipient}, ...`
     if (textFits(testText, containerWidth - 50)) {
@@ -70,7 +70,7 @@ const updateVisibleRecipients = async () => {
   visibleRecipients.value = visible
 }
 
-// Watch para mudanças no tamanho da janela
+// Watch for window resize
 onMounted(() => {
   window.addEventListener('resize', updateVisibleRecipients)
   updateVisibleRecipients()
@@ -87,18 +87,21 @@ onUnmounted(() => {
     class="recipients-container"
   >
     <span ref="recipientsRef" class="recipients-text">
-      <!-- Caso especial para primeiro recipient quando não há espaço -->
-      <template v-if="visibleRecipients.length === 0 && recipients.length > 0">
-        <span class="truncated-recipient">{{ recipients[0] }}</span>
-      </template>
+      <!-- Single truncated recipient when no space -->
+      <span 
+        v-if="!visibleRecipients.length && recipients.length" 
+        class="truncated-recipient"
+      >
+        {{ recipients[0] }}
+      </span>
       
-      <!-- Recipients visíveis -->
-      <template v-else>
-        {{ visibleRecipients.join(', ') }}<template v-if="visibleRecipients.length < recipients.length">, ...</template>
-      </template>
+      <!-- List of visible recipients -->
+      <span v-else>
+        {{ visibleRecipients.join(', ') }}<span v-if="visibleRecipients.length < recipients.length">, ...</span>
+      </span>
     </span>
 
-    <!-- RecipientsBadge com contador -->
+    <!-- Counter badge -->
     <RecipientsBadge
       v-if="recipients.length > 1 && hiddenCount > 0"
       :numTruncated="hiddenCount"
@@ -106,13 +109,15 @@ onUnmounted(() => {
       @mouseleave="showTooltip = false"
     />
 
-    <!-- Tooltip -->
-    <div 
-      v-if="showTooltip"
-      class="recipients-tooltip"
-    >
-      {{ recipients.join(', ') }}
-    </div>
+    <!-- Tooltip using Teleport -->
+    <Teleport to="body">
+      <div 
+        v-if="showTooltip"
+        class="recipients-tooltip"
+      >
+        {{ recipients.join(', ') }}
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -148,5 +153,6 @@ onUnmounted(() => {
   border-radius: 24px;
   display: flex;
   align-items: center;
+  z-index: 1000;
 }
 </style>
