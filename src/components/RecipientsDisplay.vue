@@ -2,75 +2,100 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, Teleport } from 'vue'
 import RecipientsBadge from './RecipientsBadge.vue'
 
+// Types
 interface RecipientsDisplayProps {
   recipients: string[]
 }
 
+// Props
 const props = defineProps<RecipientsDisplayProps>()
 
-// DOM element refs
+// Refs
 const containerRef = ref<HTMLDivElement | null>(null)
-const recipientsRef = ref<HTMLSpanElement | null>(null)
 const showTooltip = ref(false)
 
-// State for visible recipients control
-const visibleRecipients = ref<string[]>([])
-const hiddenCount = computed(() => {
-  if (visibleRecipients.value.length === 0) return props.recipients.length - 1
-  return props.recipients.length - visibleRecipients.value.length
-})
-
-// Hidden span to check if text fits in container
-const span = document.createElement('span')
-span.style.visibility = 'hidden'
-span.style.position = 'absolute'
-span.style.whiteSpace = 'nowrap'
-document.body.appendChild(span)
-
-const textFits = (text: string, containerWidth: number): boolean => {
-  span.textContent = text
-  return span.offsetWidth <= containerWidth
+// Create reusable hidden span for text measurements
+const createHiddenSpan = () => {
+  const span = document.createElement('span')
+  span.style.cssText = `
+    visibility: hidden;
+    position: absolute;
+    white-space: nowrap;
+  `
+  document.body.appendChild(span)
+  return span
 }
 
-// Update visible recipients based on available space
+// Computed
+const visibleRecipients = ref<string[]>([])
+const hiddenCount = computed(() => 
+  visibleRecipients.value.length === 0 
+    ? props.recipients.length - 1 
+    : props.recipients.length - visibleRecipients.value.length
+)
+
+const shouldShowBadge = computed(() => 
+  props.recipients.length > 1 && hiddenCount.value > 0
+)
+
+const firstRecipient = computed(() => 
+  props.recipients[0] || ''
+)
+
+// Text measurement utilities
+const measurementSpan = createHiddenSpan()
+
+const measureText = (text: string): number => {
+  measurementSpan.textContent = text
+  return measurementSpan.offsetWidth
+}
+
+const textFits = (text: string, containerWidth: number): boolean => 
+  measureText(text) <= containerWidth - 50
+
+// Core logic
+const calculateVisibleRecipients = (
+  recipients: string[], 
+  containerWidth: number
+): string[] => {
+  // Handle edge cases
+  if (recipients.length === 0) return []
+  if (recipients.length === 1) return [recipients[0]]
+  
+  const [first, ...others] = recipients
+  
+  // Check if even first recipient fits
+  if (!textFits(first, containerWidth)) return []
+  
+  // Initialize with first recipient
+  const visible = [first]
+  let currentText = first
+  
+  // Add recipients until we run out of space
+  for (const recipient of others) {
+    const testText = `${currentText}, ${recipient}, ...`
+    if (!textFits(testText, containerWidth)) break
+    
+    visible.push(recipient)
+    currentText = `${currentText}, ${recipient}`
+  }
+  
+  return visible
+}
+
 const updateVisibleRecipients = async () => {
   await nextTick()
   
-  if (!containerRef.value || props.recipients.length === 0) return
+  if (!containerRef.value) return
   
   const containerWidth = containerRef.value.offsetWidth
-  const [firstRecipient, ...otherRecipients] = props.recipients
-  
-  // Special case for single recipient
-  if (props.recipients.length === 1) {
-    visibleRecipients.value = [firstRecipient]
-    return
-  }
-  
-  // If even first recipient doesn't fit completely
-  if (!textFits(firstRecipient, containerWidth - 50)) {
-    visibleRecipients.value = []
-    return
-  }
-  
-  const visible = [firstRecipient]
-  let currentText = firstRecipient
-  
-  // Try to add other recipients
-  for (const recipient of otherRecipients) {
-    const testText = `${currentText}, ${recipient}, ...`
-    if (textFits(testText, containerWidth - 50)) {
-      visible.push(recipient)
-      currentText = `${currentText}, ${recipient}`
-    } else {
-      break
-    }
-  }
-  
-  visibleRecipients.value = visible
+  visibleRecipients.value = calculateVisibleRecipients(
+    props.recipients,
+    containerWidth
+  )
 }
 
-// Watch for window resize
+// Lifecycle
 onMounted(() => {
   window.addEventListener('resize', updateVisibleRecipients)
   updateVisibleRecipients()
@@ -78,6 +103,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateVisibleRecipients)
+  measurementSpan.remove()
 })
 </script>
 
@@ -86,30 +112,26 @@ onUnmounted(() => {
     ref="containerRef" 
     class="recipients-container"
   >
-    <span ref="recipientsRef" class="recipients-text">
-      <!-- Single truncated recipient when no space -->
+    <span class="recipients-text">
       <span 
         v-if="!visibleRecipients.length && recipients.length" 
         class="truncated-recipient"
       >
-        {{ recipients[0] }}
+        {{ firstRecipient }}
       </span>
       
-      <!-- List of visible recipients -->
       <span v-else>
         {{ visibleRecipients.join(', ') }}<span v-if="visibleRecipients.length < recipients.length">, ...</span>
       </span>
     </span>
 
-    <!-- Counter badge -->
     <RecipientsBadge
-      v-if="recipients.length > 1 && hiddenCount > 0"
+      v-if="shouldShowBadge"
       :numTruncated="hiddenCount"
       @mouseenter="showTooltip = true"
       @mouseleave="showTooltip = false"
     />
 
-    <!-- Tooltip using Teleport -->
     <Teleport to="body">
       <div 
         v-if="showTooltip"
